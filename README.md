@@ -203,77 +203,302 @@ Each order receives a priority score (0-100) calculated from:
 ## 🚀 Installation & Setup
 
 ### Prerequisites
-- Docker Desktop installed
-- Git (optional, for cloning repository)
+- **Docker Desktop** installed and running
+- **Git** (optional, for cloning repository)
 
 ---
 
-## 🎯 Quick Start: Complete Stack with Database (Easiest)
+## 🎯 Quick Start with Docker Hub (Recommended)
+
+### Option 1: Complete Stack with Docker Compose (Easiest)
 
 **Run everything (Database + Backend + Frontend) with one command!**
 
-### Using Docker Hub Images
+1. **Create a `docker-compose.yml` file:**
 
-```bash
-# Download the docker-compose.hub.yml file
-curl -O https://raw.githubusercontent.com/your-repo/bean-and-brew/main/docker-compose.hub.yml
-
-# Start all services
-docker-compose -f docker-compose.hub.yml up -d
-```
-
-**Or create `docker-compose.hub.yml` manually:**
 ```yaml
 version: '3.8'
 
 services:
+  # SQL Server Database
   database:
     image: mcr.microsoft.com/mssql/server:2022-latest
     container_name: bean-brew-database
     environment:
       - ACCEPT_EULA=Y
-      - SA_PASSWORD=BeanBrew@2026
+      - SA_PASSWORD=YourStrong@Password123
+      - MSSQL_PID=Express
     ports:
       - "1433:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    networks:
+      - bean-brew-network
+    restart: unless-stopped
     healthcheck:
-      test: /opt/mssql-tools/bin/sqlcmd -S localhost -U SA -P "BeanBrew@2026" -Q "SELECT 1" || exit 1
+      test: /opt/mssql-tools/bin/sqlcmd -S localhost -U SA -P "YourStrong@Password123" -Q "SELECT 1" || exit 1
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
 
+  # Spring Boot Backend
   backend:
     image: tejdeep1/bean-brew-backend:latest
+    container_name: bean-brew-backend
     ports:
       - "8082:8082"
     environment:
       - SPRING_DATASOURCE_URL=jdbc:sqlserver://database:1433;databaseName=BaristaDatabase;encrypt=true;trustServerCertificate=true
       - SPRING_DATASOURCE_USERNAME=SA
-      - SPRING_DATASOURCE_PASSWORD=BeanBrew@2026
+      - SPRING_DATASOURCE_PASSWORD=YourStrong@Password123
+      - GOOGLE_CLIENT_ID=your-google-client-id
+      - GOOGLE_CLIENT_SECRET=your-google-client-secret
     depends_on:
       database:
         condition: service_healthy
+    networks:
+      - bean-brew-network
+    restart: unless-stopped
 
+  # React Frontend
   frontend:
     image: tejdeep1/bean-brew-frontend:latest
+    container_name: bean-brew-frontend
     ports:
       - "3000:80"
     depends_on:
       - backend
+    networks:
+      - bean-brew-network
+    restart: unless-stopped
+
+networks:
+  bean-brew-network:
+    driver: bridge
+
+volumes:
+  sqlserver_data:
 ```
 
-**Then run:**
+2. **Start all services:**
+
 ```bash
-docker-compose -f docker-compose.hub.yml up -d
+docker-compose up -d
 ```
 
-**Wait for services to start (about 30-60 seconds), then access:**
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:8082
-- **Database**: localhost:1433 (SA/BeanBrew@2026)
+3. **Access the application:**
+   - **Frontend**: http://localhost:3000
+   - **Backend API**: http://localhost:8082
+   - **Database**: localhost:1433
 
-**Note**: The database will be automatically created on first run by Spring Boot JPA.
+4. **Stop all services:**
 
-**To stop everything:**
+```bash
+docker-compose down
+```
+
+---
+
+### Option 2: Run Individual Containers
+
+#### Step 1: Run MS SQL Server Database
+
+```bash
+# Pull and run SQL Server
+docker run -d \
+  --name bean-brew-database \
+  -e "ACCEPT_EULA=Y" \
+  -e "SA_PASSWORD=YourStrong@Password123" \
+  -e "MSSQL_PID=Express" \
+  -p 1433:1433 \
+  --network bean-brew-network \
+  mcr.microsoft.com/mssql/server:2022-latest
+
+# Create network first if it doesn't exist
+docker network create bean-brew-network
+```
+
+**Database Connection Details:**
+- **Host**: localhost (or `database` from within Docker)
+- **Port**: 1433
+- **Username**: SA
+- **Password**: YourStrong@Password123
+- **Database**: BaristaDatabase (auto-created by app)
+
+#### Step 2: Run Backend
+
+```bash
+# Pull backend image from Docker Hub
+docker pull tejdeep1/bean-brew-backend:latest
+
+# Run backend container
+docker run -d \
+  --name bean-brew-backend \
+  -p 8082:8082 \
+  --network bean-brew-network \
+  -e SPRING_DATASOURCE_URL="jdbc:sqlserver://database:1433;databaseName=BaristaDatabase;encrypt=true;trustServerCertificate=true" \
+  -e SPRING_DATASOURCE_USERNAME="SA" \
+  -e SPRING_DATASOURCE_PASSWORD="YourStrong@Password123" \
+  -e GOOGLE_CLIENT_ID="your-google-client-id" \
+  -e GOOGLE_CLIENT_SECRET="your-google-client-secret" \
+  tejdeep1/bean-brew-backend:latest
+```
+
+**Backend will be available at**: http://localhost:8082
+
+#### Step 3: Run Frontend
+
+```bash
+# Pull frontend image from Docker Hub
+docker pull tejdeep1/bean-brew-frontend:latest
+
+# Run frontend container
+docker run -d \
+  --name bean-brew-frontend \
+  -p 3000:80 \
+  --network bean-brew-network \
+  tejdeep1/bean-brew-frontend:latest
+```
+
+**Frontend will be available at**: http://localhost:3000
+
+---
+
+### Option 3: Build from Source
+
+**Clone the repository:**
+
+```bash
+git clone https://github.com/tejdeepgurramkonda/Bean-Brew-cafe-The-Coffee-Shop-Barista-Dilemma.git
+cd Bean-Brew-cafe-The-Coffee-Shop-Barista-Dilemma
+```
+
+**Update environment variables:**
+
+Edit `backend/src/main/resources/application.properties` and `docker-compose.yml` with your credentials.
+
+**Build and run with Docker Compose:**
+
+```bash
+docker-compose up --build
+```
+
+**Or build manually:**
+
+#### Backend
+```bash
+cd backend
+docker build -t bean-brew-backend .
+docker run -p 8082:8082 \
+  -e SPRING_DATASOURCE_URL="jdbc:sqlserver://localhost:1433;databaseName=BaristaDatabase" \
+  -e SPRING_DATASOURCE_USERNAME="your_username" \
+  -e SPRING_DATASOURCE_PASSWORD="your_password" \
+  bean-brew-backend
+```
+
+#### Frontend
+```bash
+cd frontend
+docker build -t bean-brew-frontend .
+docker run -p 3000:80 bean-brew-frontend
+```
+
+---
+
+## 🗄 Database Setup
+
+### Automatic Setup (Recommended)
+The database schema is **automatically created** by Spring Boot JPA on first run. No manual SQL scripts needed!
+
+### Manual Setup (Optional)
+If you prefer to set up the database manually:
+
+1. **Connect to SQL Server:**
+```bash
+docker exec -it bean-brew-database /opt/mssql-tools/bin/sqlcmd -S localhost -U SA -P "YourStrong@Password123"
+```
+
+2. **Create database:**
+```sql
+CREATE DATABASE BaristaDatabase;
+GO
+USE BaristaDatabase;
+GO
+```
+
+3. **Tables are auto-created by JPA**, but here's the schema for reference:
+
+**Users Table:**
+- id (bigint, PK)
+- email (varchar)
+- name (varchar)
+- password (varchar)
+- role (varchar)
+- provider (varchar)
+- loyalty_status (varchar)
+
+**Baristas Table:**
+- id (bigint, PK)
+- name (varchar)
+- status (varchar)
+- current_workload (int)
+
+**Orders Table:**
+- id (bigint, PK)
+- customer_id (bigint, FK)
+- barista_id (bigint, FK)
+- drink_type (varchar)
+- quantity (int)
+- status (varchar)
+- priority_score (decimal)
+- created_at (datetime)
+- assigned_at (datetime)
+- completed_at (datetime)
+
+---
+
+## 🔧 Configuration
+
+### Environment Variables
+
+Create a `.env` file or set environment variables:
+
+**Backend:**
+```env
+# Database Configuration
+SPRING_DATASOURCE_URL=jdbc:sqlserver://localhost:1433;databaseName=BaristaDatabase
+SPRING_DATASOURCE_USERNAME=SA
+SPRING_DATASOURCE_PASSWORD=YourStrong@Password123
+
+# Google OAuth2 (Optional - for social login)
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+
+# Server Configuration
+SERVER_PORT=8082
+```
+
+**Frontend:**
+```env
+VITE_API_BASE_URL=http://localhost:8082
+```
+
+---
+
+## 📦 Docker Hub Images
+
+**Pull pre-built images:**
+
+- **Frontend**: `docker pull tejdeep1/bean-brew-frontend:latest`
+- **Backend**: `docker pull tejdeep1/bean-brew-backend:latest`
+
+**Image Details:**
+- Built with multi-stage Dockerfiles for minimal image size
+- Frontend: ~50MB (Nginx Alpine + React build)
+- Backend: ~300MB (JRE 17 Alpine + Spring Boot JAR)
+
+---
 ```bash
 docker-compose -f docker-compose.hub.yml down
 ```
