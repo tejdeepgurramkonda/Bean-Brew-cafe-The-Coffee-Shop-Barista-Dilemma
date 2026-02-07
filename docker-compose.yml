@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  # SQL Server Database
+  database:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: bean-brew-database
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=BeanBrew@2026
+      - MSSQL_PID=Express
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    networks:
+      - bean-brew-network
+    restart: unless-stopped
+    healthcheck:
+      test: /opt/mssql-tools/bin/sqlcmd -S localhost -U SA -P "BeanBrew@2026" -Q "SELECT 1" || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Spring Boot Backend
+  backend:
+    image: tejdeep1/bean-brew-backend:latest
+    container_name: bean-brew-backend
+    ports:
+      - "8082:8082"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:sqlserver://database:1433;databaseName=BaristaDatabase;encrypt=true;trustServerCertificate=true
+      - SPRING_DATASOURCE_USERNAME=${DB_USERNAME:-SA}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD:-BeanBrew@2026}
+      - SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+    depends_on:
+      database:
+        condition: service_healthy
+    networks:
+      - bean-brew-network
+    restart: unless-stopped
+
+  # React Frontend
+  frontend:
+    image: tejdeep1/bean-brew-frontend:latest
+    container_name: bean-brew-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - bean-brew-network
+    restart: unless-stopped
+
+volumes:
+  sqlserver_data:
+    driver: local
+
+networks:
+  bean-brew-network:
+    driver: bridge
